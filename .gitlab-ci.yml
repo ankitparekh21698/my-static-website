@@ -1,23 +1,33 @@
-image: node:10
+image: node
 
 stages:
   - build
   - test
+  - deploy review
   - deploy staging
   - deploy production
   - production tests
 
+#Caching up node_modules to increase pipeline efficiency 
 cache:
   key: ${CI_COMMIT_REF_SLUG}
   paths:
     - node_modules/
 
+#Environment Variables
 variables:
   STAGING_DOMAIN: deadpool-in-staging.surge.sh
   PRODUCTION_DOMAIN: deadpool-in-production.surge.sh
 
+#The deployment jobs automatically pick up SURGE_LOGIN & SURGE_TOKEN CI/CD variables from the environment.
+#Ensure the variables are configured for the project.
+
+#Job for Artifact creation with dynamic versioning
 build website:
   stage: build
+  only:
+    - master
+    - merge_requests
   script:
     - echo $CI_COMMIT_SHORT_SHA
     - npm install
@@ -28,14 +38,22 @@ build website:
     paths:
       - ./public
 
+#Job for testing the artifact
 test artifact:
   image: alpine
   stage: test
+  only:
+    - master
+    - merge_requests
   script:
     - grep -q "Gatsby" ./public/index.html
 
+#Job for testing the hosting process
 test website:
   stage: test
+  only:
+    - master
+    - merge_requests
   script:
     - npm install
     - npm install -g gatsby-cli
@@ -43,28 +61,61 @@ test website:
     - sleep 3
     - curl "http://localhost:9000" | tac | tac | grep -q "Gatsby"
 
+#Job for creating a review deployment for merge request
+deploy review:
+  stage: deploy review
+  only:
+    - merge_requests
+  environment:
+      name: review/$CI_COMMIT_REF_NAME
+      url: https://deadpool-in-$CI_ENVIRONMENT_SLUG.surge.sh
+      on_stop: stop review
+  script:
+    - npm install --global surge
+    - surge --project ./public --domain deadpool-in-$CI_ENVIRONMENT_SLUG.surge.sh
+
+#Job for cleaning up the review deployment
+stop review:
+  stage: deploy review
+  only:
+    - merge_requests
+  variables:
+    GIT_STRATEGY: none
+  script:
+    - npm install --global surge
+    - surge teardown deadpool-in-$CI_ENVIRONMENT_SLUG.surge.sh
+  when: manual
+  environment:
+    name: review/$CI_COMMIT_REF_NAME
+    action: stop
+
+#Pre-production stage
 deploy staging: 
   stage: deploy staging
   environment:
     name: staging
     url: http://$STAGING_DOMAIN
   only:
-    - master  
+    - master
+  before_script:
+    - npm install --global surge  
   script:
-    - npm install --global surge
     - surge --project ./public --domain $STAGING_DOMAIN
 
+#Job for production deployments
 deploy production: 
   stage: deploy production
   environment:
     name: production
     url: $PRODUCTION_DOMAIN
   only:
-    - master    
+    - master
+  before_script:
+    - npm install --global surge    
   script:
-    - npm install --global surge
     - surge --project ./public --domain $PRODUCTION_DOMAIN
 
+#Job for post release testing
 production tests:
   image: alpine
   stage: production tests
