@@ -92,6 +92,7 @@ stop review:
 
 #This job builds and pushes the image to the container registry. It uses two additional environment variables. 
 pushing image:
+  image: docker
   stage: release
   only:
     - master
