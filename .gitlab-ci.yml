@@ -9,6 +9,11 @@ stages:
   - deploy production
   - production tests
 
+services:
+  - name: docker:dind
+    entrypoint: ["env", "-u", "DOCKER_HOST"]
+    command: ["dockerd-entrypoint.sh"]
+
 #Caching up node_modules to increase pipeline efficiency 
 cache:
   key: ${CI_COMMIT_REF_SLUG}
@@ -20,6 +25,9 @@ variables:
   PROJECT_NAME: deadpool
   STAGING_DOMAIN: deadpool-in-staging.surge.sh
   PRODUCTION_DOMAIN: deadpool-in-production.surge.sh
+  DOCKER_HOST: tcp://docker:2375/
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
 
 #The deployment jobs automatically pick up SURGE_LOGIN & SURGE_TOKEN CI/CD variables from the environment.
 #Ensure the variables are configured for the project.
@@ -93,7 +101,7 @@ stop review:
 
 #This job builds and pushes the image to the container registry. It uses two additional environment variables. 
 pushing image:
-  image: docker
+  image: docker:latest
   stage: release
   only:
     - master
